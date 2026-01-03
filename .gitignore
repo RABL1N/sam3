@@ -154,7 +154,7 @@ Thumbs.db
 
 # Frontend dependencies
 node_modules/
-app/frontend/node_modules/
+/app/frontend/node_modules/
 
 # Next.js build output
 .next/
