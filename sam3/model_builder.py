@@ -57,7 +57,7 @@ def _setup_tf32() -> None:
 _setup_tf32()
 
 
-def _create_position_encoding(precompute_resolution=None):
+def _create_position_encoding(precompute_resolution=None, device=None):
     """Create position encoding for visual backbone."""
     return PositionEmbeddingSine(
         num_pos_feats=256,
@@ -65,6 +65,7 @@ def _create_position_encoding(precompute_resolution=None):
         scale=None,
         temperature=10000,
         precompute_resolution=precompute_resolution,
+        device=device,
     )
 
 
@@ -234,7 +235,7 @@ def _create_segmentation_head(compile_mode=None):
 def _create_geometry_encoder():
     """Create geometry encoder with all its components."""
     # Create position encoding for geometry encoder
-    geo_pos_enc = _create_position_encoding()
+    geo_pos_enc = _create_position_encoding(device="cuda" if torch.cuda.is_available() else "cpu")
     # Create CX block for fuser
     cx_block = CXBlock(
         dim=256,
@@ -445,7 +446,7 @@ def build_tracker(
     transformer = _create_tracker_transformer()
     backbone = None
     if with_backbone:
-        vision_backbone = _create_vision_backbone(compile_mode=compile_mode)
+        vision_backbone = _create_vision_backbone(compile_mode=compile_mode, device="cuda" if torch.cuda.is_available() else "cpu")
         backbone = SAM3VLBackbone(scalp=1, visual=vision_backbone, text=None)
     # Create the Tracker module
     model = Sam3TrackerPredictor(
@@ -498,11 +499,11 @@ def _create_text_encoder(bpe_path: str) -> VETextEncoder:
 
 
 def _create_vision_backbone(
-    compile_mode=None, enable_inst_interactivity=True
+    compile_mode=None, enable_inst_interactivity=True, device=None
 ) -> Sam3DualViTDetNeck:
     """Create SAM3 visual backbone with ViT and neck."""
     # Position encoding
-    position_encoding = _create_position_encoding(precompute_resolution=1008)
+    position_encoding = _create_position_encoding(precompute_resolution=1008, device=device)
     # ViT backbone
     vit_backbone: ViT = _create_vit_backbone(compile_mode=compile_mode)
     vit_neck: Sam3DualViTDetNeck = _create_vit_neck(
@@ -524,6 +525,8 @@ def _create_sam3_transformer(has_presence_token: bool = True) -> TransformerWrap
 
 def _load_checkpoint(model, checkpoint_path):
     """Load model checkpoint from file."""
+    if not checkpoint_path or checkpoint_path == "":
+        raise ValueError("checkpoint_path cannot be empty or None")
     with g_pathmgr.open(checkpoint_path, "rb") as f:
         ckpt = torch.load(f, map_location="cpu", weights_only=True)
     if "model" in ckpt and isinstance(ckpt["model"], dict):
@@ -589,7 +592,7 @@ def build_sam3_image_model(
     # Create visual components
     compile_mode = "default" if compile else None
     vision_encoder = _create_vision_backbone(
-        compile_mode=compile_mode, enable_inst_interactivity=enable_inst_interactivity
+        compile_mode=compile_mode, enable_inst_interactivity=enable_inst_interactivity, device=device
     )
 
     # Create text components
@@ -630,8 +633,8 @@ def build_sam3_image_model(
     )
     if load_from_HF and checkpoint_path is None:
         checkpoint_path = download_ckpt_from_hf()
-    # Load checkpoint if provided
-    if checkpoint_path is not None:
+    # Load checkpoint if provided (check for both None and empty string)
+    if checkpoint_path is not None and checkpoint_path != "":
         _load_checkpoint(model, checkpoint_path)
 
     # Setup device and mode
@@ -679,7 +682,7 @@ def build_sam3_video_model(
     tracker = build_tracker(apply_temporal_disambiguation=apply_temporal_disambiguation)
 
     # Build Detector components
-    visual_neck = _create_vision_backbone()
+    visual_neck = _create_vision_backbone(device="cuda" if torch.cuda.is_available() else "cpu")
     text_encoder = _create_text_encoder(bpe_path)
     backbone = SAM3VLBackbone(scalp=1, visual=visual_neck, text=text_encoder)
     transformer = _create_sam3_transformer(has_presence_token=has_presence_token)

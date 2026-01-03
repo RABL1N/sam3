@@ -151,3 +151,19 @@ Thumbs.db
 # BPE vocabulary files
 *.bpe
 *.vocab
+
+# Frontend dependencies
+node_modules/
+app/frontend/node_modules/
+
+# Next.js build output
+.next/
+app/frontend/.next/
+
+# Generated annotations
+annotations/
+app/annotations/
+
+# Lock files (optional - uncomment if you want to commit them)
+# uv.lock
+# package-lock.json
